@@ -17,12 +17,14 @@
 #define IER_THRE        (0x01<<1)
 #define IER_RLS         (0x01<<2)
 
+extern uint16_t sig_mask;
 
 void uart_init(uint32_t baudrate); 
 void LPC11xx_print(const char* p_str, int32_t value, uint8_t newline);
 void UART_IRQHandler(void);
 
-uint8_t rcv_data_translate(void);
+uint8_t rcv_data2level(void);
 void rvc_data_reset(void);
+void snd_poweroff(void);
 
 #endif

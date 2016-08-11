@@ -2,8 +2,9 @@
 #include "string.h"
 #include "sys_cfg.h"
 #include "uart.h"
+#include "gpio.h"
 
-static uint8_t rcv_data = 0;//用于存放从主控芯片接收到的值, linux关机前发送0xff
+static uint8_t rcv_data = 0; //用于存放从主控芯片接收到的值, linux关机前发送0xff
 
 /*
 	uart_init();
@@ -223,28 +224,85 @@ void UART_IRQHandler(void)
 		while(LPC_UART->LSR & LSR_RDR)
 			rcv_data = LPC_UART->RBR;
 	}
-	//LPC11xx_print("receive ", rcv_data, 1);
+	LPC11xx_print("receive ", rcv_data, 1);
+	if(rcv_data == 0xff)
+		snd_poweroff();
 	return;
 }
-
-uint8_t rcv_data_translate(void)
+//#define DEBUG
+#ifdef DEBUG 
+uint8_t rcv_data2level(void)
 {
 	uint8_t res;
-	if(rcv_data < 50)
+	if(rcv_data == 0)
+		res = 0;
+	else if(rcv_data == 1)
 		res = 1;
-	else if(rcv_data >= 50 && rcv_data < 80)
+	else if(rcv_data == 2)
 		res = 2;
-	else if(rcv_data >= 80 && rcv_data < 100)
+	else if(rcv_data == 3)
 		res = 3;
-	else if(rcv_data >= 100 && rcv_data < 254)
+	else if(rcv_data == 4)
 		res = 4;
-	else if(rcv_data == 0xff){
-		//rcv_data = 0;
+	else if(rcv_data == 5)
+		res = 5;
+	else if(rcv_data == 6)
+		res = 6;
+	else if(rcv_data == 7)
+		res = 7;
+	else if(rcv_data == 8)
+		res = 8;
+	else if(rcv_data == 9)
+		res = 9;
+	else if(rcv_data == 10)
+		res = 10;
+	else
 		res = 0xff;
-	}
 	return res;
 }
 
+#else
+//run_state
+//0 开机过程
+//1 正常运行
+//2 初始化过程
+//3 关机过程 
+//4 关机完成
+//5 温度过高, 异常
+//6 恢复出厂设置
+uint8_t rcv_data2level(void)
+{
+	uint8_t res;
+	
+	if(rcv_data < 50 && rcv_data > 0){
+		run_state = 1;
+		res = 1;
+	}else if(rcv_data >= 50 && rcv_data < 80){
+		run_state = 1;
+		res = 2;
+	}else if(rcv_data >= 80 && rcv_data < 100){
+		run_state = 1;
+		res = 3;
+	}else if(rcv_data >= 100 && rcv_data < 120){
+		run_state = 1;
+		res = 4;
+	}else if(rcv_data >= 120 && rcv_data < 0xe0){
+		run_state = 5;
+		res = 4;
+	}else if(rcv_data == 0xfd){
+		run_state = 6;
+		res = 4;
+	}else if(rcv_data == 0xfe){
+		run_state = 2;
+		res = 4;
+	}else if(rcv_data == 0xff){
+		run_state = 3;
+		res = 4;
+	}
+
+	return res;
+}
+#endif
 void rvc_data_reset(void)
 {
 	rcv_data = 0;

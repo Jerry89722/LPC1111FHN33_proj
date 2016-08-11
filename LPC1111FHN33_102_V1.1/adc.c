@@ -2,7 +2,9 @@
 #include "sys_cfg.h"
 #include "uart.h"
 #include "adc.h"
-uint32_t temper;
+
+uint32_t temper; //用于存储temp传感器得到的 温度值*1000000
+
 void adc_config(void)
 {
 	peripherals_clk_switch(AHBCLKCTRL_IOCON, 1);
@@ -29,7 +31,7 @@ void adc_init(void)
 										   //11个时钟, 10位精度 bit17~19
 							//| 1 << 24;		 //start, 立即启动转换
 							//| 1 << 27; //下降沿启动转换, start开启时有效
-	//LPC_ADC->DR[2] ;//此寄存器的6~15位为adc结果 31位为完成标识位
+	//LPC_ADC->DR[2] ; //此寄存器的6~15位为adc结果 31位为完成标识位
 	NVIC_EnableIRQ(ADC_IRQn);
 }
 
@@ -40,8 +42,8 @@ void ADC_IRQHandler(void)
 	
 	tmp = (LPC_ADC->DR[2] >> 6) & 0x3ff;
 	temper = get_temp(tmp); //temper = 实际温度值*1000000
-	LPC11xx_print("temperature = ", temper/1000000, 0);
-	LPC11xx_print(".", (temper%1000000)/10000, 1);
+	// LPC11xx_print("temperature = ", temper/1000000, 0);
+	//LPC11xx_print(".", (temper%1000000)/10000, 1);
 }
 
 void adc_start(void)

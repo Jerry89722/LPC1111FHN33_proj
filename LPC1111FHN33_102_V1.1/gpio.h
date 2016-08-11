@@ -17,6 +17,7 @@
 #define PIN_INPUT		0
 
 extern uint32_t rotation;
+extern uint8_t run_state;  //用于记录单片机系统的运行状态的全局变量
 
 void gpio_set_value(uint8_t PIOx, uint32_t gpio_num, uint8_t direction, uint8_t level);
 
@@ -36,5 +37,7 @@ void gpio_pwm_init(void);
 
 void speed_gpio_init(void);
 
-void pwm_init(void);
+void led_ctrl(void);
+
+//void pwm_init(void);
 #endif

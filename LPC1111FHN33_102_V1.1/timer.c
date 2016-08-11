@@ -6,12 +6,12 @@
 #include "gpio.h"
 
 static uint8_t level = 1;
-static uint32_t speed_arr[3] = {50, 30, 10};
+//static uint32_t speed_arr[3] = {600, 360, 120};
 /*
 timer使用情况说明:
-	timer16_0, 用于产生pwm, 只使用了MR3 MR2的匹配, MR3 = 0.1S
+	timer16_0, 测量风扇转速
 	timer16_1, 用于task时间片管理定时器
-	timer32_0, 未使用
+	timer32_0, 用于产生模拟产生pwm,频率20khz
 	timer32_1, 用于精确的delay系列函数, 使用了MR3的匹配
 */
 
@@ -30,8 +30,15 @@ void timer_init(LPC_TMR_TypeDef* p_timer)
 	{
 	case (uint32_t)LPC_TMR32B0:
 		peripherals_clk_switch(AHBCLKCTRL_CT32B0, 1);
-		p_timer->PR = 11;  // 1us
-		break;
+		p_timer->PR = 11;  // 1 us
+		p_timer->IR |= 0x1f; //中断复位
+		p_timer->MCR |= 3<<6; //MR2匹配时触发中断, 复位TC
+		
+		//使能计数器并保持复位
+		p_timer->TCR &= ~3;
+		p_timer->TCR |= 2;
+		return ;
+//		break;
 	case (uint32_t)LPC_TMR32B1:
 		peripherals_clk_switch(AHBCLKCTRL_CT32B1, 1);
 		p_timer->PR = 11;  // 1us
@@ -117,6 +124,8 @@ void timer_start(LPC_TMR_TypeDef* p_timer, uint8_t loop, uint32_t interval)
 */
 void TIMER32_0_IRQHandler(void)
 {
+	/*
+	LPC11xx_print("timer TIMER32_0_IRQ", 0, 1);
 	uint8_t pwm_state = gpio_get_value(GPIO_GRP0, 3);
 	
 	LPC_TMR32B0->IR |= 1<<3; //中断复位
@@ -130,6 +139,7 @@ void TIMER32_0_IRQHandler(void)
 	}
 	
 	LPC_TMR32B0->IR |= 1<<3;
+	*/
 }
 
 void TIMER32_1_IRQHandler(void)
@@ -143,7 +153,7 @@ void TIMER32_1_IRQHandler(void)
 void TIMER16_0_IRQHandler(void)
 {
 	LPC_TMR16B0->IR |= 1<<3;//中断复位
-	//LPC11xx_print("rotation = ", rotation, 1);
+	LPC11xx_print("rotation = ", rotation, 1);
 	rotation = 0;
 }
 
@@ -221,9 +231,7 @@ void delay_us(uint32_t duration)//max 4296967296us
 //PIO1_6  010  CT32B0_MAT0
 //PIO1_7  010  CT32B0_MAT1
 
-
-
-#if 0
+#if 1		//用于pwm管脚方法控制pwm
 /*
 	timer_init()默认开启MR3匹配复位触发中断, pwm不需要中断可以关闭中断
 */
@@ -273,15 +281,48 @@ void pwm_init(LPC_TMR_TypeDef* p_timer, __IO uint32_t* addr)
 	
 	//配置pwm的参数
 	p_timer->MR2 = period;
+	p_timer->MR3 = 4*period / 5;
 	p_timer->CTCR &= ~3; //定时器模式工作
-	p_timer->PWMC |= (3<<2);
+	p_timer->PWMC |= (1<<3);
 	
-	p_timer->MCR &= ~(1<<9); //关闭MR3匹配时的中断
+	p_timer->MCR &= ~(1<<6); //关闭MR2匹配时的中断
 	//NVIC_DisableIRQ(TIMER_16_0_IRQn);
 }
 
 //pwm_ctrl();
-
+// #define DEBUG
+#ifdef DEBUG
+void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
+{
+	static uint8_t last_level = 0;
+	
+	level = 0; //将转速调到最低用于测试
+	LPC11xx_print("speed level = ", level, 1);
+	if(level != last_level)
+	{
+		p_timer->TCR &= ~3;  //10 计数器禁能, 保持复位
+		p_timer->TCR |= 2;
+		
+		//p_timer->MR3 = 35 - 15 * (level -1); //设置转速 30 15 0
+		
+		p_timer->MR3 = 50 - level * 5;
+		
+		p_timer->TCR &= ~3;  //01 计数器使能, 解除复位
+		p_timer->TCR |= 1;
+		
+		last_level = level;
+	}
+}
+void speed_ctrl(void)
+{
+	uint8_t tmp = rcv_data2level();
+	
+	if(tmp == 0xff)
+		return;
+	
+	pwm_ctrl(LPC_TMR32B0, tmp);
+}
+#else
 void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
 {
 	static uint8_t last_level = 0;
@@ -289,12 +330,14 @@ void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
 		level = 1;
 	else if(level > 3)
 		level = 3;
+	//LPC11xx_print("speed level = ", level, 1);
 	if(level != last_level)
 	{
 		p_timer->TCR &= ~3;  //10 计数器禁能, 保持复位
 		p_timer->TCR |= 2;
 		
-		p_timer->MR2 = (3-level) * period / 2; //设置转速
+		p_timer->MR3 = 35 - 15 * (level -1); //设置转速 30 15 0
+		//p_timer->MR3 = 325 + 350 * (level - 1); //设置转速 325 675 975
 		
 		p_timer->TCR &= ~3;  //01 计数器使能, 解除复位
 		p_timer->TCR |= 1;
@@ -305,25 +348,40 @@ void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
 
 void speed_ctrl(void)
 {
+	uint8_t tmp = rcv_data2level();
+	
+	if(tmp == 0xff)
+		return;
+	else
+		level = tmp;
+	if(level > 3)
+		level = 3;
+	
+	pwm_ctrl(LPC_TMR32B0, level);
+}
+#endif
+#else  //定时器和普通pio模拟pwm, 控制风扇转速
+void speed_ctrl(void)
+{
 	static uint8_t last_level = 0;
-	uint8_t tmp = rcv_data_translate();
+	uint8_t tmp = rcv_data2level();
 	if(tmp == 0xff)
 		return;
 	else
 		level = tmp;
 
-	LPC11xx_print("temp_level = ", level, 1);
+	//LPC11xx_print("last_level = ", last_level, 1);
 
 	if(last_level != level)
 	{
 		last_level = level;
-		if(level == 3){
+		if(level >= 3){
 			gpio_set_value(GPIO_GRP0, 3, PIN_OUTPUT, 1);
 		return ;
 	}
 		gpio_set_value(GPIO_GRP0, 3, PIN_OUTPUT, 0);
-		timer_start(LPC_TMR16B0, 0, speed_arr[level - 1]);
+		timer_start(LPC_TMR32B0, 0, speed_arr[level - 1]);
 	}
 }
-#endif
+#endif 
 

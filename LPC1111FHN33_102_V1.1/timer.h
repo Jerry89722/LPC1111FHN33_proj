@@ -18,12 +18,12 @@ void delay_ms(uint32_t duration);
 
 void delay_us(uint32_t duration);
 
-//void pwm_init(LPC_TMR_TypeDef* p_timer, __IO uint32_t* addr);
+void pwm_init(LPC_TMR_TypeDef* p_timer, __IO uint32_t* addr);
 
-//void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level);
+void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level);
 
 void task_timer_init(void);
 
-//void speed_ctrl(void);
+void speed_ctrl(void);
 
 #endif

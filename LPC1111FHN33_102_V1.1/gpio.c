@@ -108,6 +108,10 @@ void IO_int_enable(uint8_t PIOx, uint32_t gpio_num, uint8_t trigger_type)
 		port[PIOx]->IS &= ~(1 << gpio_num);//设为边沿触发
 		port[PIOx]->IEV |= (1 << gpio_num);//设为下降沿触发
 	}
+	
+	port[PIOx]->IE &= ~(1 << gpio_num);// 屏蔽中断
+	port[PIOx]->IC |= 1 << gpio_num;   // 清除中断
+	while(port[PIOx]->MIS & (1 << gpio_num));
 	port[PIOx]->IE |= 1 << gpio_num;//取消中断屏蔽
 	
 	NVIC_EnableIRQ(EINT3_IRQn);//EINT0_IRQn~EINT3_IRQn为枚举中连续的项, 所以"-PIOx"来确定中断号
@@ -119,6 +123,7 @@ void IO_int_disable(uint8_t PIOx, uint32_t gpio_num)
 	LPC_GPIO_TypeDef* port[4] = {LPC_GPIO0, LPC_GPIO1, LPC_GPIO2, LPC_GPIO3};
 	port[PIOx]->IE &= ~(1 << gpio_num);// 屏蔽中断
 	port[PIOx]->IC |= 1 << gpio_num;   // 清除中断
+	while(port[PIOx]->MIS & (1 << gpio_num));
 }
 
 /////////////////////////////////以上为通用函数, 以下为具体项目中调用/////////////////////////////
@@ -126,14 +131,17 @@ void IO_int_disable(uint8_t PIOx, uint32_t gpio_num)
 //打开12v供电
 void power_12v_on(void)
 {
+	//LPC11xx_print("on", 0, 1);
 	gpio_init(&(LPC_IOCON->PIO1_9));//设为gpio
 	gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_LOW);
+
 }
 
 // 12电源开关
 void power_12v_off(void)
 {
 	gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_HIGH);		//!gpio_get_value(GPIO_GRP1, 9));
+
 }
 
 //////led alarm _ctrl ///////start
@@ -142,15 +150,19 @@ void indicator_init(void)
 	// led
 	gpio_init(&(LPC_IOCON->PIO0_6));
 	gpio_init(&(LPC_IOCON->PIO0_7));
+	gpio_init(&(LPC_IOCON->PIO0_8));
 	gpio_init(&(LPC_IOCON->PIO0_9));
 	gpio_init(&(LPC_IOCON->SWCLK_PIO0_10));
 	
-	//6, 9 为蓝灯
-	gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_LOW);
-	gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_LOW);
-	//7, 10 为黄灯
+	//6, 7, 9 为蓝灯
+	gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_HIGH);
+	gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_HIGH);
 	gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_HIGH);
-	gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_HIGH);
+	//8, 10 为黄灯
+	
+	gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, LEVEL_LOW);
+	gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_LOW);
+	
 	
 	//speaker
 	gpio_init(&(LPC_IOCON->PIO1_8));
@@ -160,7 +172,8 @@ void indicator_init(void)
 void indicator_ctrl(void)
 {
 	static uint8_t last_state = 0;
-	uint8_t run_state = rcv_data_translate();
+	rcv_data2level();
+	
 	if(run_state == 4)
 		run_state = 1;
 	else if(run_state < 4)
@@ -171,12 +184,13 @@ void indicator_ctrl(void)
 	if(run_state != last_state){
 		last_state = run_state;
 		
-		//6, 9 为蓝灯
-		gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, run_state);
-		gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, run_state);
-		//7, 10 为黄灯
+		//6, 7, 9 为蓝灯
+		gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, !run_state);
 		gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, !run_state);
-		gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, !run_state);
+		gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, !run_state);
+		//8, 10 为黄灯
+		gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, run_state);
+		gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, run_state);
 		
 		//speaker ctrl
 		gpio_set_value(GPIO_GRP1, 8, PIN_OUTPUT, run_state);
@@ -195,7 +209,8 @@ void resetkey_init(void)
 void snd_poweroff(void)
 {
 	LPC11xx_print("poweroff", 0, 1);
-	if( rcv_data_translate() == 0xff){
+	rcv_data2level();
+	if(run_state == 3){
 		task_unregister(snd_poweroff);
 		delay_sec(5);
 		LPC11xx_print("poweroff done !", 0, 1);
@@ -205,10 +220,14 @@ void snd_poweroff(void)
 	}
 }
 
+
+// 按键的中断服务程序
 void PIOINT3_IRQHandler(void)
 {
 	IO_int_disable(GPIO_GRP3, 4);
-	delay_ms(50);
+	
+	//delay_ms(100);
+	LPC11xx_print("key int get", 0, 1);
 	if(gpio_get_value(GPIO_GRP1, 9)) {
 		power_12v_on();
 		IO_int_enable(GPIO_GRP3, 4, 0);
@@ -226,7 +245,7 @@ void gpio_pwm_init(void)
 }
 ////// pwm gpio ////////
 
-////// MOTOR SPEED GET ////////
+////// MOTOR SPEED GET START////////
 void speed_gpio_init(void)
 {
 	gpio_init(&(LPC_IOCON->PIO0_2));
@@ -241,22 +260,95 @@ void PIOINT0_IRQHandler(void)
 	IO_int_enable(GPIO_GRP0, 2, 0);
 }
 
-////// MOTOR SPEED GET ////////
+////// MOTOR SPEED GET END////////
+
+/*
+	led闪灯效果控制
+*/
+uint8_t run_state = 0;
+void led_ctrl(void)
+{
+	static uint8_t last_run_state = 0xff;
+	static uint8_t flash = 1;
+	uint8_t level;
+	
+	rcv_data2level();
+	
+	if(run_state == 0 || run_state == 2 || run_state == 3)
+		flash = 1;
+	else if(run_state == 1 || run_state == 4 || run_state == 5)
+		flash = 0;
+	//LPC11xx_print("flash = ", flash, 1);
+	//LPC11xx_print("run_state = ", run_state, 1);
+	if(run_state != last_run_state || flash){
+		if(run_state == 0 || run_state == 3){  				 //开/关机阶段 蓝灯闪
+			
+			level = gpio_get_value(GPIO_GRP0, 6);
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, !level);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, !level);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, !level);
+			
+			//8, 10 为黄灯
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_LOW);
+		} else if(run_state == 1) {  //正常运行阶段 蓝灯常亮
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_HIGH);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_HIGH);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_HIGH);
+			
+			//8, 10 为黄灯
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, 0);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, 0);
+		} else if(run_state == 2) {  //初始化阶段  蓝黄灯交替闪
+			level = gpio_get_value(GPIO_GRP0, 6); 
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, !level);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, !level);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, !level);
+			
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, level);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, level);
+			
+		} else if(run_state == 4) {  //关机完成  灯灭
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_LOW);
+			
+			//8, 10 为黄灯
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_LOW);
+		} else if(run_state == 5) {  //运行异常   黄灯闪亮
+			level = gpio_get_value(GPIO_GRP0, 8);
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_LOW);
+			
+			//8, 10 为黄灯
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, !level);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, !level);
+		} else if(run_state == 6) { //恢复出厂设置, 黄灯常亮
+			//6, 7, 9 为蓝灯
+			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_LOW);
+			gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_LOW);
+			
+			//8, 10 为黄灯
+			gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, LEVEL_HIGH);
+			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_HIGH);
+		}
+	}
+}
+
+#if 0  //只用于定时器与pwm分开的做法
 void pwm_init(void)
 {
 	gpio_pwm_init();
 	timer_init(LPC_TMR32B0);
-	timer_start(LPC_TMR32B0, 0, 40);
+	timer_start(LPC_TMR32B0, 0, 1);
 }
+#endif
 
-/*
-void clock_out(void)
-{
-	LPC_SYSCON->CLKOUTCLKSEL = 0;
-	LPC_SYSCON->CLKOUTCLKSEL = 0x3;
-	LPC_SYSCON->CLKOUTUEN = 0;
-	LPC_SYSCON->CLKOUTUEN = 1;
-	LPC_SYSCON->CLKOUTDIV = 100;
-	LPC_IOCON->PIO0_1 = 1;
-}
-*/

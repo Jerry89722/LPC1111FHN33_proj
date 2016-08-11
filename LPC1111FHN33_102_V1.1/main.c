@@ -8,7 +8,7 @@
 
 void test_task(void)
 {
-	//LPC11xx_print("io0_2 = ", gpio_get_value(GPIO_GRP0, 2), 1);
+	LPC11xx_print("io0_2 = ", gpio_get_value(GPIO_GRP0, 2), 1);
 }
 
 int main(void)
@@ -35,8 +35,8 @@ int main(void)
 	
 	indicator_init();
 	
-	//使用定时器与管脚分离的方法模拟pwm
-	pwm_init();
+	timer_init(LPC_TMR32B0);
+	pwm_init(LPC_TMR32B0, (uint32_t*)&(LPC_IOCON->R_PIO0_11));
 
 	speed_gpio_init();
 
@@ -44,11 +44,12 @@ int main(void)
 	
 	LPC11xx_print("system init done!", 0, 1);
 	
-	//注册任务	任务函数void(*p_calbak)(void);
-	task_register(indicator_ctrl, 1, 500);//系统状态灯, 1s判定执行一次
-	
+	//注册任务	任务函数void(*p_calbak)(void);	
 	task_register(adc_start, 1, 1000); // 2s执行一次温度获取
-	//task_register(test_task, 1, 500);
+	
+	task_register(speed_ctrl, 1, 1000);
+	task_register(led_ctrl, 1, 250);
+	//task_register(test_task, 1, 1000);
 	while(1)
 	{
 		for(i = 0; i < TASK_MAX_NUM; ++i)
@@ -62,6 +63,5 @@ int main(void)
 		
 		watchdog_feed();
 	}
-	
 }
 
