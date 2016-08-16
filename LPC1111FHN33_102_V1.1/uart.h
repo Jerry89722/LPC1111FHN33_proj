@@ -24,7 +24,7 @@ void LPC11xx_print(const char* p_str, int32_t value, uint8_t newline);
 void UART_IRQHandler(void);
 
 uint8_t rcv_data2level(void);
-void rvc_data_reset(void);
+void rcv_data_reset(void);
 void snd_poweroff(void);
 
 #endif

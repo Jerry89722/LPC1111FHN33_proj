@@ -4,7 +4,7 @@
 #include "uart.h"
 #include "gpio.h"
 
-static uint8_t rcv_data = 0; //用于存放从主控芯片接收到的值, linux关机前发送0xff
+static uint8_t rcv_data = 0; //用于存放从主控芯片接收到的值
 
 /*
 	uart_init();
@@ -272,7 +272,7 @@ uint8_t rcv_data2level(void)
 //6 恢复出厂设置
 uint8_t rcv_data2level(void)
 {
-	uint8_t res;
+	uint8_t res = 0;
 	
 	if(rcv_data < 50 && rcv_data > 0){
 		run_state = 1;
@@ -303,7 +303,7 @@ uint8_t rcv_data2level(void)
 	return res;
 }
 #endif
-void rvc_data_reset(void)
+void rcv_data_reset(void)
 {
 	rcv_data = 0;
 }

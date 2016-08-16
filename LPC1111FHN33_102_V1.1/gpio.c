@@ -101,12 +101,12 @@ void IO_int_enable(uint8_t PIOx, uint32_t gpio_num, uint8_t trigger_type)
 	if(trigger_type)
 	{
 		port[PIOx]->IS |= 1 << gpio_num; //电平触发
-		port[PIOx]->IEV |= 1<<gpio_num;  //低电平触发
-	} 
+		port[PIOx]->IEV &= ~(1<<gpio_num);  //高电平触发
+	}
 	else
 	{
 		port[PIOx]->IS &= ~(1 << gpio_num);//设为边沿触发
-		port[PIOx]->IEV |= (1 << gpio_num);//设为下降沿触发
+		port[PIOx]->IEV &= ~(1 << gpio_num);//设为上升沿触发
 	}
 	
 	port[PIOx]->IE &= ~(1 << gpio_num);// 屏蔽中断
@@ -114,7 +114,8 @@ void IO_int_enable(uint8_t PIOx, uint32_t gpio_num, uint8_t trigger_type)
 	while(port[PIOx]->MIS & (1 << gpio_num));
 	port[PIOx]->IE |= 1 << gpio_num;//取消中断屏蔽
 	
-	NVIC_EnableIRQ(EINT3_IRQn);//EINT0_IRQn~EINT3_IRQn为枚举中连续的项, 所以"-PIOx"来确定中断号
+	NVIC_EnableIRQ(EINT3_IRQn);//EINT0_IRQn~EINT3_IRQn为枚举中连续的项
+	NVIC_EnableIRQ(EINT1_IRQn);
 	NVIC_EnableIRQ(EINT0_IRQn);
 }
 
@@ -204,36 +205,76 @@ void resetkey_init(void)
 	gpio_init(&(LPC_IOCON->PIO3_4));
 	gpio_set_value(GPIO_GRP3, 4, PIN_INPUT, LEVEL_HIGH);
 	IO_int_enable(GPIO_GRP3, 4, 0);
+	
+	gpio_init(&(LPC_IOCON->SWDIO_PIO1_3));
+	gpio_set_value(GPIO_GRP1, 3, PIN_INPUT, LEVEL_HIGH);
+	IO_int_enable(GPIO_GRP1, 3, 0);
 }
 
 void snd_poweroff(void)
 {
+	static uint8_t power_cnt = 0;
 	LPC11xx_print("poweroff", 0, 1);
 	rcv_data2level();
 	if(run_state == 3){
+		if(power_cnt++ < 15){
+			return;
+		}
+		power_cnt = 0;
 		task_unregister(snd_poweroff);
-		delay_sec(5);
+		//delay_sec(5);
 		LPC11xx_print("poweroff done !", 0, 1);
 		power_12v_off();
-		rvc_data_reset();
+		rcv_data_reset();
 		IO_int_enable(GPIO_GRP3, 4, 0);
 	}
 }
 
-
+uint8_t run_state = 0;
 // 按键的中断服务程序
 void PIOINT3_IRQHandler(void)
 {
 	IO_int_disable(GPIO_GRP3, 4);
 	
 	//delay_ms(100);
-	LPC11xx_print("key int get", 0, 1);
-	if(gpio_get_value(GPIO_GRP1, 9)) {
-		power_12v_on();
+	LPC11xx_print("key int 3 get", 0, 1);
+	task_register(long_press_chk, 1, 50);
+}
+
+// 6820复位按键的中断服务程序
+void PIOINT1_IRQHandler(void)
+{
+	IO_int_disable(GPIO_GRP1, 3);
+	
+	LPC11xx_print("key int 1 get", 0, 1);
+	rcv_data_reset();
+	run_state = 0;
+	
+	IO_int_enable(GPIO_GRP1, 3, 0);
+}
+
+void long_press_chk(void)
+{
+	static uint8_t cnt_key = 0;
+	LPC11xx_print("----chk----", gpio_get_value(GPIO_GRP3, 4), 1);
+	
+	if(!gpio_get_value(GPIO_GRP3, 4)){
+		if(cnt_key++ > 10){
+			cnt_key = 0;
+			task_unregister(long_press_chk);
+			if(gpio_get_value(GPIO_GRP1, 9)){
+				power_12v_on();
+				IO_int_enable(GPIO_GRP3, 4, 0);
+			}else{
+				task_register(snd_poweroff, 1, 500);
+			}
+		}
+	}else{
+		cnt_key = 0;
+		task_unregister(long_press_chk);
 		IO_int_enable(GPIO_GRP3, 4, 0);
-	} else {
-		task_register(snd_poweroff, 1, 500);
 	}
+	
 }
 ///////key_ctrl end//////////
 
@@ -265,7 +306,7 @@ void PIOINT0_IRQHandler(void)
 /*
 	led闪灯效果控制
 */
-uint8_t run_state = 0;
+
 void led_ctrl(void)
 {
 	static uint8_t last_run_state = 0xff;

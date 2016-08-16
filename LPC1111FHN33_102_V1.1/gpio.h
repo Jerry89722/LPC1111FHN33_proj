@@ -39,5 +39,7 @@ void speed_gpio_init(void);
 
 void led_ctrl(void);
 
+void long_press_chk(void);
+
 //void pwm_init(void);
 #endif
