@@ -42,8 +42,8 @@ void ADC_IRQHandler(void)
 	
 	tmp = (LPC_ADC->DR[2] >> 6) & 0x3ff;
 	temper = get_temp(tmp); //temper = 实际温度值*1000000
-	// LPC11xx_print("temperature = ", temper/1000000, 0);
-	//LPC11xx_print(".", (temper%1000000)/10000, 1);
+	LPC11xx_print("temperature = ", temper/1000000, 0);
+	LPC11xx_print(".", (temper%1000000)/10000, 1);
 }
 
 void adc_start(void)

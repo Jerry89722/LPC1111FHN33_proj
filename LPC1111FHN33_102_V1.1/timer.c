@@ -5,6 +5,8 @@
 #include "task.h"
 #include "gpio.h"
 
+#include "debug.h"
+
 static uint8_t level = 1;
 //static uint32_t speed_arr[3] = {600, 360, 120};
 /*
@@ -290,13 +292,12 @@ void pwm_init(LPC_TMR_TypeDef* p_timer, __IO uint32_t* addr)
 }
 
 //pwm_ctrl();
-// #define DEBUG
 #ifdef DEBUG
 void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
 {
 	static uint8_t last_level = 0;
 	
-	level = 0; //将转速调到最低用于测试
+	//level = 0; //将转速调到最低用于测试
 	LPC11xx_print("speed level = ", level, 1);
 	if(level != last_level)
 	{

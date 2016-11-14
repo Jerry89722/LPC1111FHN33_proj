@@ -20,7 +20,7 @@ int main(void)
 	uart_init(115200); //波特率为115200
 	//clock_out();
 	power_12v_on();
-	resetkey_init(); //12v电源开关按钮初始化
+	key_init(); //12v电源开关按钮初始化
 	
 	timer_init(LPC_TMR32B1); //32位定时器1初始化, 用于delay_xx系列精确延时函数
 	//timer_start(LPC_TMR32B1, 0, 1);
@@ -42,13 +42,21 @@ int main(void)
 
 	watchdog_init();
 	
-	LPC11xx_print("system init done!", 0, 1);
-	
+	LPC11xx_print("sys init done!", 0, 1);
+
+	LPC11xx_print("adc_start: ", (uint32_t)adc_start, 1);
+	LPC11xx_print("speed_ctrl: ", (uint32_t)speed_ctrl, 1);
+	LPC11xx_print("stata_idc: ", (uint32_t)status_deal, 1);
+	LPC11xx_print("long_pre: ", (uint32_t)long_press_chk, 1);
+	LPC11xx_print("delay_po: ", (uint32_t)delay_poweroff, 1);
+	LPC11xx_print("snd_po: ", (uint32_t)snd_poweroff, 1);
+
+
 	//注册任务	任务函数void(*p_calbak)(void);	
 	task_register(adc_start, 1, 1000); // 2s执行一次温度获取
 	
 	task_register(speed_ctrl, 1, 1000);
-	task_register(led_ctrl, 1, 250);
+	task_register(status_deal, 1, 250);
 	//task_register(test_task, 1, 1000);
 	while(1)
 	{

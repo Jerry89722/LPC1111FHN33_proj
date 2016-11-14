@@ -3,8 +3,11 @@
 #include "sys_cfg.h"
 #include "uart.h"
 #include "gpio.h"
+#include "task.h"
 
-static uint8_t rcv_data = 0; //用于存放从主控芯片接收到的值
+#include "debug.h"
+
+static uint8_t rcv_data = 50; //用于存放从主控芯片接收到的值
 
 /*
 	uart_init();
@@ -225,40 +228,32 @@ void UART_IRQHandler(void)
 			rcv_data = LPC_UART->RBR;
 	}
 	LPC11xx_print("receive ", rcv_data, 1);
-	if(rcv_data == 0xff)
-		snd_poweroff();
+	if(rcv_data == 0)
+		return ;
+	else if(rcv_data > 0 && rcv_data <120)
+		run_state = S_NORMAL;
+	else if(rcv_data >= 120 && rcv_data < 0xe0)
+		run_state = S_ABNORMAL;
+	else if(rcv_data == 0xff){
+		run_state = S_SYS_OFF_DONE;
+	}
+	else if(rcv_data == 0xfe)
+		run_state = S_INIT_ING;
+	else if(rcv_data == 0xfd)
+		run_state = S_RESET_ING;
+	else
+		run_state = S_ABNORMAL;
+
 	return;
 }
-//#define DEBUG
+
 #ifdef DEBUG 
 uint8_t rcv_data2level(void)
 {
-	uint8_t res;
-	if(rcv_data == 0)
-		res = 0;
-	else if(rcv_data == 1)
-		res = 1;
-	else if(rcv_data == 2)
-		res = 2;
-	else if(rcv_data == 3)
-		res = 3;
-	else if(rcv_data == 4)
-		res = 4;
-	else if(rcv_data == 5)
-		res = 5;
-	else if(rcv_data == 6)
-		res = 6;
-	else if(rcv_data == 7)
-		res = 7;
-	else if(rcv_data == 8)
-		res = 8;
-	else if(rcv_data == 9)
-		res = 9;
-	else if(rcv_data == 10)
-		res = 10;
+	if(rcv_data <= 10)
+		return rcv_data;
 	else
-		res = 0xff;
-	return res;
+		return 0xff;
 }
 
 #else
@@ -272,35 +267,18 @@ uint8_t rcv_data2level(void)
 //6 恢复出厂设置
 uint8_t rcv_data2level(void)
 {
-	uint8_t res = 0;
+	uint8_t level = 0;  //用于返回风速level
 	
-	if(rcv_data < 50 && rcv_data > 0){
-		run_state = 1;
-		res = 1;
-	}else if(rcv_data >= 50 && rcv_data < 80){
-		run_state = 1;
-		res = 2;
-	}else if(rcv_data >= 80 && rcv_data < 100){
-		run_state = 1;
-		res = 3;
-	}else if(rcv_data >= 100 && rcv_data < 120){
-		run_state = 1;
-		res = 4;
-	}else if(rcv_data >= 120 && rcv_data < 0xe0){
-		run_state = 5;
-		res = 4;
-	}else if(rcv_data == 0xfd){
-		run_state = 6;
-		res = 4;
-	}else if(rcv_data == 0xfe){
-		run_state = 2;
-		res = 4;
-	}else if(rcv_data == 0xff){
-		run_state = 3;
-		res = 4;
-	}
-
-	return res;
+	if(rcv_data < 50 && rcv_data > 0)
+		level = 1;
+	else if(rcv_data >= 50 && rcv_data < 80)
+		level = 2;
+	else if(rcv_data >= 80 && rcv_data < 100)
+		level = 3;
+	else
+		level = 4;
+	
+	return level;
 }
 #endif
 void rcv_data_reset(void)
