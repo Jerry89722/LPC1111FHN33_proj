@@ -158,6 +158,8 @@ void indicator_init(void)
 	gpio_init(&(LPC_IOCON->PIO0_8));
 	gpio_init(&(LPC_IOCON->PIO0_9));
 	gpio_init(&(LPC_IOCON->SWCLK_PIO0_10));
+	// speaker 
+	gpio_init(&(LPC_IOCON->PIO1_8)); 
 	
 	//6, 7, 9 为蓝灯
 	gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_HIGH);
@@ -250,6 +252,7 @@ void long_press_chk(void)
 			if(gpio_get_value(GPIO_GRP1, 9)){  //开机
 				power_12v_on();
 				run_state = S_ON_ING;
+				task_register(speaker_ctrl, 1, 300); //开机时蜂鸣器响
 				//IO_int_enable(GPIO_GRP3, 4, 0);
 			}else{  //关机
 				task_register(snd_poweroff, 1, 500);
@@ -337,7 +340,7 @@ void status_deal(void)
 		} else if(run_state == S_NORMAL) {  //正常运行阶段 蓝灯常亮
 			//6, 7, 10为蓝灯
 			gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_HIGH);
-			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_HIGH);			
+			gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_HIGH);
 			gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_HIGH);
 			
 			//8, 9 为黄灯
@@ -386,6 +389,17 @@ void status_deal(void)
 		}
 	}
 	last_run_state = run_state;
+}
+
+void speaker_ctrl(void)
+{
+
+	if(gpio_get_value(GPIO_GRP1, 8)){
+		gpio_set_value(GPIO_GRP1, 8, PIN_OUTPUT, LEVEL_LOW);
+		task_unregister(speaker_ctrl);
+	}else{
+		gpio_set_value(GPIO_GRP1, 8, PIN_OUTPUT, LEVEL_HIGH);
+	}
 }
 
 #if 0  //只用于定时器与pwm分开的做法

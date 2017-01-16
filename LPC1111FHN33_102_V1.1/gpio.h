@@ -57,5 +57,7 @@ void status_deal(void);
 void long_press_chk(void);
 
 void delay_poweroff(void);
+
+void speaker_ctrl(void);
 //void pwm_init(void);
 #endif
