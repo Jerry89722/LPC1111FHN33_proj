@@ -8,6 +8,7 @@
 #include "debug.h"
 
 static uint8_t rcv_data = 50; //用于存放从主控芯片接收到的值
+uint8_t uart_status = 0;   //用于指示 单片机与系统串口通讯状态, 0正常通讯, >3未正常通讯
 
 /*
 	uart_init();
@@ -26,7 +27,7 @@ void uart_init(uint32_t baudrate)
   LPC_IOCON->PIO1_6 |= 1;
   
 	//UART I/O配置为TX功能
-  LPC_IOCON->PIO1_7 &= ~7;	
+  LPC_IOCON->PIO1_7 &= ~7;
   LPC_IOCON->PIO1_7 |= 1;
   peripherals_clk_switch(AHBCLKCTRL_IOCON, 0);
 	
@@ -79,7 +80,7 @@ void uart_init(uint32_t baudrate)
 		LPC_UART->FDR |= 1;
 		LPC_UART->FDR |= 2<<4;
 		break;
-		case 38400:
+	case 38400:
 		LPC_UART->DLM &= ~0xff;
 		LPC_UART->DLL &= ~0xff;
 		LPC_UART->DLL |= 0xd;
@@ -109,7 +110,7 @@ void uart_init(uint32_t baudrate)
 		LPC_UART->FDR |= 5;
 		LPC_UART->FDR |= 8<<4;
 		break;
-		case 115200:
+	case 115200:
 		LPC_UART->DLM &= ~0xff;
 		LPC_UART->DLL &= ~0xff;
 		LPC_UART->DLL |= 4;
@@ -142,6 +143,7 @@ void uart_init(uint32_t baudrate)
 
   //regVal = LPC_UART->LSR; //读LSR以清空线状态寄存器
 	LPC_UART->LSR;  //读LSR以清空线状态寄存器, -------------
+	
 	//清空发送相关的寄存器
   while (( LPC_UART->LSR & (LSR_THRE|LSR_TEMT)) != (LSR_THRE|LSR_TEMT) );
   //清空接收相关的寄存器
@@ -220,30 +222,58 @@ newl:
 	参数: 无
 	返回值: 无
 */
+
+static const uint8_t dataframe[4] = {0x0, 0xef, 0, 0xee}; // 数据帧结构dataframe[2]为数据
 void UART_IRQHandler(void)
 {
+	static uint8_t buf[4] = {0};
+	static uint8_t i = 0;
+	uart_status = 0;  // 串口收到中断置0, 表示通讯正常
+	//LPC11xx_print("i: ", i, 1);
+	
+	
 	if(((LPC_UART->IIR>>1) & 7) == 2)
 	{
-		while(LPC_UART->LSR & LSR_RDR)
-			rcv_data = LPC_UART->RBR;
+		while(LPC_UART->LSR & LSR_RDR){
+			buf[i] = LPC_UART->RBR;
+			
+			//LPC11xx_print("buf ", buf[i], 1);
+			//添加一个简单协议防止接收数据时的干扰信号, 数据帧 0x0 0xef data 0xee
+			if(i == 2){
+				if(buf[i-1] > 130 && buf[i-1] < 0xe0)
+					i = 0;
+				++i;
+				return;
+			}
+			if(buf[i] != dataframe[i]){
+				i = 0;
+				return;
+			}
+			if(++i >= 4){
+				i = 0;
+				rcv_data = buf[2];
+			}else{
+				return ;
+			}
+		}
+		LPC11xx_print("receive ", rcv_data, 1);
+		if(rcv_data == 0)
+			return ;
+		else if(rcv_data > 0 && rcv_data <120)
+			run_state = S_NORMAL;
+		else if(rcv_data >= 120 && rcv_data < 0xe0)
+			run_state = S_ABNORMAL;
+		else if(rcv_data == 0xff)
+			run_state = S_SYS_OFF_DONE;
+		
+		else if(rcv_data == 0xfe)
+			run_state = S_INIT_ING;
+		else if(rcv_data == 0xfd)
+			run_state = S_RESET_ING;
+		else
+			run_state = S_ABNORMAL;
 	}
-	LPC11xx_print("receive ", rcv_data, 1);
-	if(rcv_data == 0)
-		return ;
-	else if(rcv_data > 0 && rcv_data <120)
-		run_state = S_NORMAL;
-	else if(rcv_data >= 120 && rcv_data < 0xe0)
-		run_state = S_ABNORMAL;
-	else if(rcv_data == 0xff){
-		run_state = S_SYS_OFF_DONE;
-	}
-	else if(rcv_data == 0xfe)
-		run_state = S_INIT_ING;
-	else if(rcv_data == 0xfd)
-		run_state = S_RESET_ING;
-	else
-		run_state = S_ABNORMAL;
-
+	
 	return;
 }
 

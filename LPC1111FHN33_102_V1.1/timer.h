@@ -3,6 +3,8 @@
 
 #include "LPC11xx.h"
 
+#define PWM_FAN  //使用PWM控制风扇转速时打开, 使用GPIO控制风扇转速时注释此行
+
 #define period		50 		//20khz
 
 void timer_init(LPC_TMR_TypeDef* p_timer);

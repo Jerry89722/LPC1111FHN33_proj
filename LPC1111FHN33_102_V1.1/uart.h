@@ -18,6 +18,7 @@
 #define IER_RLS         (0x01<<2)
 
 extern uint16_t sig_mask;
+extern uint8_t uart_status;
 
 void uart_init(uint32_t baudrate); 
 void LPC11xx_print(const char* p_str, int32_t value, uint8_t newline);

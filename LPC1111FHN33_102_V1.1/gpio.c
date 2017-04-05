@@ -146,7 +146,7 @@ void power_12v_on(void)
 // 12电源开关
 void power_12v_off(void)
 {
-	gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_HIGH);		//!gpio_get_value(GPIO_GRP1, 9));
+	gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_HIGH);	
 }
 
 //////led alarm _ctrl ///////start
@@ -206,7 +206,11 @@ void delay_poweroff(void)
 		}
 		power_cnt = 0;
 		task_unregister(delay_poweroff);
-		
+		gpio_set_value(GPIO_GRP0, 6, PIN_OUTPUT, LEVEL_HIGH);
+		gpio_set_value(GPIO_GRP0, 7, PIN_OUTPUT, LEVEL_HIGH);
+		gpio_set_value(GPIO_GRP0, 8, PIN_OUTPUT, LEVEL_HIGH);
+		gpio_set_value(GPIO_GRP0, 9, PIN_OUTPUT, LEVEL_HIGH);
+		gpio_set_value(GPIO_GRP0, 10, PIN_OUTPUT, LEVEL_HIGH);
 		LPC11xx_print("poweroff done", 0, 1);
 		power_12v_off();
 		rcv_data_reset();
@@ -222,7 +226,7 @@ void PIOINT3_IRQHandler(void)
 	IO_int_disable(GPIO_GRP3, 4);
 	
 	//delay_ms(100);
-	LPC11xx_print("key int 3_4 get", 0, 1);
+	LPC11xx_print("key int 3_4 catch", 0, 1);
 	task_register(long_press_chk, 1, 50);
 }
 
@@ -231,22 +235,39 @@ void PIOINT1_IRQHandler(void)
 {
 	IO_int_disable(GPIO_GRP1, 3);
 	
-	LPC11xx_print("key int 1_3 get", 0, 1);
+	LPC11xx_print("key int 1_3 catch", gpio_get_value(GPIO_GRP1, 3), 1);
+	// task_register(long_press_chk, 1, 20);  //防抖任务
 	task_unregister(snd_poweroff);
 	rcv_data_reset();
 	run_state = S_ON_ING;
 	gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_LOW);
+	task_register(speaker_ctrl, 1, 300);
 	IO_int_enable(GPIO_GRP1, 3, 0);
 }
 
 void long_press_chk(void)
 {
 	static uint8_t cnt_key = 0;
-	//LPC11xx_print("----press----", gpio_get_value(GPIO_GRP3, 4), 1);
+	//LPC11xx_print("----press----", gpio_get_value(GPIO_GRP1, 3), 1);
 	uint8_t i;
-	
+	/* // 复位键的防抖检测, 但复位由硬件拉低完成, 软件只是检测, 所以软件加了防抖也没用
+	if(!gpio_get_value(GPIO_GRP1, 3)){
+		if(cnt_key++ > 3){
+			LPC11xx_print("reset cmd get", 0, 1);
+			cnt_key = 0;
+			task_unregister(long_press_chk);
+			task_unregister(snd_poweroff);
+			rcv_data_reset();
+			run_state = S_ON_ING;
+			gpio_set_value(GPIO_GRP1, 9, PIN_OUTPUT, LEVEL_LOW);
+			task_register(speaker_ctrl, 1, 300);
+			IO_int_enable(GPIO_GRP1, 3, 0);
+		}
+	}else
+	*/ 
 	if(!gpio_get_value(GPIO_GRP3, 4)){
 		if(cnt_key++ > 10){
+			LPC11xx_print("power cmd get", 0, 1);
 			cnt_key = 0;
 			task_unregister(long_press_chk);
 			if(gpio_get_value(GPIO_GRP1, 9)){  //开机
@@ -265,6 +286,7 @@ void long_press_chk(void)
 		cnt_key = 0;
 		task_unregister(long_press_chk);
 		IO_int_enable(GPIO_GRP3, 4, 0);
+		//IO_int_enable(GPIO_GRP1, 3, 0);
 	}
 	
 }
@@ -273,17 +295,26 @@ void long_press_chk(void)
 ////// pwm gpio /////////
 void gpio_pwm_init(void)
 {
+#ifdef PWM_FAN
 	gpio_init(&(LPC_IOCON->PIO0_3));
 	gpio_set_value(GPIO_GRP0, 3, PIN_OUTPUT, LEVEL_LOW);
+#else
+	gpio_init(&(LPC_IOCON->R_PIO1_0));
+	gpio_init(&(LPC_IOCON->R_PIO1_2));
+	gpio_set_value(GPIO_GRP1, 0, PIN_OUTPUT, LEVEL_HIGH);
+	gpio_set_value(GPIO_GRP1, 2, PIN_OUTPUT, LEVEL_HIGH);
+#endif
 }
 ////// pwm gpio ////////
 
 ////// MOTOR SPEED GET START////////
 void speed_gpio_init(void)
 {
+#ifdef PWM_FAN
 	gpio_init(&(LPC_IOCON->PIO0_2));
 	gpio_set_value(GPIO_GRP0, 2, PIN_INPUT, LEVEL_HIGH);
 	IO_int_enable(GPIO_GRP0, 2, 0);
+#endif
 }
 
 void PIOINT0_IRQHandler(void)
@@ -304,10 +335,18 @@ void status_deal(void)
 	static uint8_t last_run_state = 0xff;
 	static uint8_t flash = 1;
 	uint8_t level;
-	
+
 	//rcv_data2level();
 	if(last_run_state != run_state)
 		LPC11xx_print("run_state", run_state, 1);
+
+	if(run_state == S_NORMAL || run_state == S_INIT_ING || run_state == S_RESET_ING){
+		++uart_status;
+		if(uart_status >= 5){  // 串口接收到信息时会把uart_status置0, 所以系统正常运行时uart_status不可能>3
+			LPC11xx_print("over time", 0, 1);
+			run_state = S_ABNORMAL;
+		}
+	}
 	
 	//开/关机, 初始化, 恢复出厂设置过程中不接收电源按键中断, 灯闪
 	if(run_state == S_ON_ING || run_state == S_OFF_ING || run_state == S_INIT_ING 
@@ -402,12 +441,4 @@ void speaker_ctrl(void)
 	}
 }
 
-#if 0  //只用于定时器与pwm分开的做法
-void pwm_init(void)
-{
-	gpio_pwm_init();
-	timer_init(LPC_TMR32B0);
-	timer_start(LPC_TMR32B0, 0, 1);
-}
-#endif
 

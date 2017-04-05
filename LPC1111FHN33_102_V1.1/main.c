@@ -6,6 +6,12 @@
 #include "adc.h"
 #include "watchdog.h"
 
+/*
+编译说明: 
+1. 使用PWM控制风扇转速时打开timer.h中"#define PWM_FAN", 使用gpio控制风扇转速时注释掉
+2. 打开debug.h中"#define DEBUG"可用于编译调试代码
+*/
+
 void test_task(void)
 {
 	LPC11xx_print("io0_2 = ", gpio_get_value(GPIO_GRP0, 2), 1);
@@ -26,7 +32,7 @@ int main(void)
 	//timer_start(LPC_TMR32B1, 0, 1);
 	
 	timer_init(LPC_TMR16B0); //16位定时器0初始化, 用于风扇测速
-	timer_start(LPC_TMR16B0, 1, 30000); //30s测试到数据就是测试到的转速(换算关系供应商提供), 单位: rpm
+	timer_start(LPC_TMR16B0, 1, 30000); //30s测试到数据就是测试到的转速(换算关系由风扇供应商提供), 单位: rpm
 	
 	timer_init(LPC_TMR16B1); //16位定时器1初始化, 用于task时间片管理定时器
 	timer_start(LPC_TMR16B1, 1, 1); // 开启task时间片管理定时器
@@ -36,8 +42,9 @@ int main(void)
 	indicator_init();
 	
 	timer_init(LPC_TMR32B0);
+#ifdef PWM_FAN
 	pwm_init(LPC_TMR32B0, (uint32_t*)&(LPC_IOCON->R_PIO0_11));
-
+#endif
 	speed_gpio_init();
 
 	watchdog_init();

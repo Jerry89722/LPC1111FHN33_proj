@@ -8,7 +8,7 @@
 #include "debug.h"
 
 static uint8_t level = 1;
-//static uint32_t speed_arr[3] = {600, 360, 120};
+
 /*
 timer使用情况说明:
 	timer16_0, 测量风扇转速
@@ -57,7 +57,7 @@ void timer_init(LPC_TMR_TypeDef* p_timer)
 		break;
 	
 	default:
-		LPC11xx_print("timer reg addr is invalid", 0, 1);
+		LPC11xx_print("timer reg invalid", 0, 1);
 		return;
 	}
 	
@@ -233,7 +233,7 @@ void delay_us(uint32_t duration)//max 4296967296us
 //PIO1_6  010  CT32B0_MAT0
 //PIO1_7  010  CT32B0_MAT1
 
-#if 1		//用于pwm管脚方法控制pwm
+#ifdef PWM_FAN		//用于pwm管脚方法控制pwm
 /*
 	timer_init()默认开启MR3匹配复位触发中断, pwm不需要中断可以关闭中断
 */
@@ -323,7 +323,7 @@ void speed_ctrl(void)
 	
 	pwm_ctrl(LPC_TMR32B0, tmp);
 }
-#else
+#else  //#ifdef DEBUG
 void pwm_ctrl(LPC_TMR_TypeDef* p_timer, uint8_t level)
 {
 	static uint8_t last_level = 0;
@@ -361,10 +361,9 @@ void speed_ctrl(void)
 	pwm_ctrl(LPC_TMR32B0, level);
 }
 #endif
-#else  //定时器和普通pio模拟pwm, 控制风扇转速
+#else  //GPIO控制电压以控制风扇转速
 void speed_ctrl(void)
 {
-	static uint8_t last_level = 0;
 	uint8_t tmp = rcv_data2level();
 	if(tmp == 0xff)
 		return;
@@ -372,17 +371,14 @@ void speed_ctrl(void)
 		level = tmp;
 
 	//LPC11xx_print("last_level = ", last_level, 1);
-
-	if(last_level != level)
-	{
-		last_level = level;
-		if(level >= 3){
-			gpio_set_value(GPIO_GRP0, 3, PIN_OUTPUT, 1);
-		return ;
+	if(level <=2){
+		gpio_set_value(GPIO_GRP1, 0, PIN_OUTPUT, LEVEL_LOW);
+		gpio_set_value(GPIO_GRP1, 2, PIN_OUTPUT, LEVEL_HIGH);
+	}else if(level > 2 && level < 5){
+		gpio_set_value(GPIO_GRP1, 2, PIN_OUTPUT, LEVEL_LOW);
+		gpio_set_value(GPIO_GRP1, 0, PIN_OUTPUT, LEVEL_HIGH);
 	}
-		gpio_set_value(GPIO_GRP0, 3, PIN_OUTPUT, 0);
-		timer_start(LPC_TMR32B0, 0, speed_arr[level - 1]);
-	}
+	
 }
 #endif 
 
